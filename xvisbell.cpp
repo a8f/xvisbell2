@@ -41,40 +41,18 @@ struct {
 
 bool operator<(const struct timeval & a,
                const struct timeval & b) {
-  return (a.tv_sec == b.tv_sec
-          ? a.tv_usec < b.tv_usec
-          : a.tv_sec < b.tv_sec);
+  return timercmp(&a, &b, <);
 }
 
 struct timeval & operator+=(struct timeval & a, const struct timeval & b) {
-  a.tv_usec += b.tv_usec;
-  a.tv_sec += b.tv_sec;
-
-  if (std::abs(a.tv_usec) >= 1000000) {
-    a.tv_sec += a.tv_usec / 1000000;
-    a.tv_usec %= 1000000;
-  }
-
-  if (a.tv_usec < 0 && a.tv_sec > 0) {
-    a.tv_usec += 1000000;
-    a.tv_sec -= 1;
-  }
-  else if (a.tv_usec > 0 && a.tv_sec < 0) {
-    a.tv_usec -= 1000000;
-    a.tv_sec += 1;
-  }
-
+  timeradd(&a, &b, &a);
   return a;
-}
-
-struct timeval operator-(const struct timeval & a) {
-  return {-a.tv_sec, -a.tv_usec};
 }
 
 struct timeval operator-(const struct timeval & a,
                          const struct timeval & b) {
-  struct timeval toret = a;
-  toret += -b;
+  struct timeval toret;
+  timersub(&a, &b, &toret);
   return toret;
 }
 
@@ -149,7 +127,9 @@ int main() {
       }
 
       // c++ magic, in your face linus!
-      tv = future_wakeup - cur_time;
+      tv = (future_wakeup < cur_time
+            ? timeval{0, 0}
+            : future_wakeup - cur_time);
       wait_tv = &tv;
     }
 
