@@ -133,10 +133,12 @@ int main() {
       wait_tv = &tv;
     }
 
-    // we could erroneously error out due to EINTR
-    // not handling for now
-    if (select(x11_fd + 1, &in_fds, nullptr, nullptr, wait_tv) < 0) {
-      throw std::runtime_error("select() error!");
+    while (true) {
+      if (select(x11_fd + 1, &in_fds, nullptr, nullptr, wait_tv) < 0) {
+        if (errno == EINTR) continue;
+        throw std::runtime_error("select() error!");
+      }
+      break;
     }
 
     if (timeout_is_set) {
