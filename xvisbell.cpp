@@ -17,7 +17,7 @@
   General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program; if not, sett <http://www.gnu.org/licenses/>.
+  along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <X11/XKBlib.h>
@@ -27,17 +27,26 @@
 #include <stdexcept>
 
 #include <cstdlib>
+#include <errno.h>
+#include <getopt.h>
+#include <limits.h>
+#include <math.h>
+#include <string.h>
 
 #include <sys/select.h>
 #include <sys/time.h>
 
 const struct timeval window_timeout = {0, 100000};
 
-// -1 means for w or h means screen width or height
+// Custom color for visual bell
+char *bell_color;
+
+// Dimensions/position of visual bell
+// -1 for w/h means screen width/height
 struct {
   int x, y;
   int w, h;
-} geometry = {0, 0, -1, 16};
+} geometry = {0, 0, -1, -1};
 
 bool operator<(const struct timeval & a,
                const struct timeval & b) {
@@ -56,7 +65,93 @@ struct timeval operator-(const struct timeval & a,
   return toret;
 }
 
-int main() {
+/*
+ * Parse a long from string s and store its rounded int value in i
+ * If s is a valid long in (INT_MIN, INT_MAX) then i is set to round((long)s) and false is returned
+ * Otherwise true is returned and i is not modified
+ */
+bool long_str_to_int(char *s, int *i) {
+  char *end;
+  errno = 0;
+  long l = strtol(s, &end, 10);
+  if (errno == ERANGE && (l == LONG_MAX || l == LONG_MIN)) return true; // long over/underflow
+  if (l > INT_MAX || l < INT_MIN) return true; // int over/underflow
+  if (*end != '\0') return true; // The string had some non-digit chars after the parsed int
+  *i = (int)round(l);
+  return false;
+}
+
+
+void print_usage(char *argv[]) {
+  printf("Usage: %s [-h <height>] [-w <width] [-x <x position>] [-y <y position>] [-c <colour name>]\n", argv[0]);
+}
+
+void parse_args(int argc, char *argv[]) {
+  char option;
+  struct option long_opts[8] = {
+    {"help", no_argument, NULL, 0},
+    {"width", required_argument, NULL, 'w'},
+    {"height", required_argument, NULL, 'h'},
+    // Allow --x and --y for convenience
+    {"x", required_argument, NULL, 'x'},
+    {"y", required_argument, NULL, 'y'},
+    {"color", required_argument, NULL, 'c'},
+    {"colour", required_argument, NULL, 'c'},
+    {0, 0, 0, 0} // Last element must have all 0s for getopt_long
+  };
+
+  while ((option = getopt_long(argc, argv, "w:h:x:y:c:", long_opts, NULL)) != -1) {
+    switch (option) {
+      case 0: // --help
+        print_usage(argv);
+        exit(0);
+      case 'c':
+        errno = 0;
+        bell_color = strdup(optarg);
+        if (bell_color == NULL) {
+          printf("Error setting color to %s", optarg);
+          if (errno == 0) printf("\n");
+          else printf(" (%d)\n", errno);
+          exit(1);
+        }
+        break;
+      case 'w':
+        if (long_str_to_int(optarg, &geometry.w)) {
+          printf("Invalid width %s\n", optarg);
+          exit(1);
+        }
+        break;
+      case 'h':
+        if (long_str_to_int(optarg, &geometry.h)) {
+          printf("Invalid height %s\n", optarg);
+          exit(1);
+        }
+        break;
+      case 'x':
+        if (long_str_to_int(optarg, &geometry.x)) {
+          printf("Invalid x position %s\n", optarg);
+          exit(1);
+        }
+        break;
+      case 'y':
+        if (long_str_to_int(optarg, &geometry.y)) {
+          printf("Invalid y position %s\n", optarg);
+          exit(1);
+        }
+        break;
+      default:
+        // Print error message if getopt didn't already
+        if (option != '?') {
+          printf("Invalid option %c\n", option);
+        }
+        print_usage(argv);
+        exit(1);
+    }
+  }
+}
+
+int main(int argc, char *argv[]) {
+  parse_args(argc, argv);
   auto dpy = XOpenDisplay(nullptr);
   if (!dpy) {
     throw std::runtime_error("XOpenDisplay() error");
@@ -91,9 +186,20 @@ int main() {
   XkbChangeEnabledControls(dpy, XkbUseCoreKbd, XkbAudibleBellMask, 0);
 
   XSetWindowAttributes attrs;
-  attrs.background_pixel = WhitePixel(dpy, scr);
   attrs.override_redirect = True;
   attrs.save_under = True;
+  // Set background colour
+  if (bell_color == NULL || strncmp(bell_color, "white", 5) == 0) {
+    attrs.background_pixel = WhitePixel(dpy, scr);
+  } else {
+    XColor rgb, nearest;
+    attrs.colormap = XDefaultColormap(dpy, scr);
+    if (!XAllocNamedColor(dpy, attrs.colormap, bell_color, &rgb, &nearest)) {
+      printf("Colour %s isn't supported\n", bell_color);
+      exit(1);
+    }
+    attrs.background_pixel = nearest.pixel;
+  }
 
   auto x11_fd = ConnectionNumber(dpy);
 
