@@ -4,7 +4,7 @@ xvisbell
 Flash a window on the screen whenever the X11 bell is rung.
 
 
-The typical way to use this program is to run it in the background when X starts. If you are using a desktop environment, it probably includes a way to run applications at startup. Otherwise this can be done by adding the line `xvisbell` to `~/.xinitrc`. Alternatively, you can start it in your window manager's startup script, e.g. for i3 add the line `exec --no-startup-id xvisbell &` to `~/.i3/config`.
+The typical way to use this program is to run it in the background when X starts. If you are using a desktop environment, it probably includes a way to run applications at startup. Otherwise this can be done by adding the line `xvisbell` to `~/.xinitrc` (assuming you did `make install`, otherwise the path to `xvisbell` must be specified). Alternatively, you can start it in your window manager's startup script, e.g. for i3 add the line `exec --no-startup-id xvisbell &` to `~/.i3/config`.
 
 
 Usage
@@ -22,7 +22,7 @@ Usage
 You can equivalently use `--x` or `--y`.
 
 
-`h` and `w` set the height and width of the flashed window (default height/width of the screen).
+`-h` and `-w` set the height and width of the flashed window (default height/width of the screen).
 If a negative value is given then the height/width of the screen is used.
 You can equivalently use `--height` and `--width`.
 
