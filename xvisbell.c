@@ -37,10 +37,11 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
+// Define clock_gettime since it's not implemented on older versions of OS X (< 10.12)
+// from https://stackoverflow.com/a/9781275
 #if defined(__MACH__) && !defined(CLOCK_MONOTONIC)
 #include <sys/time.h>
 #define CLOCK_MONOTONIC 0
-// clock_gettime is not implemented on older versions of OS X (< 10.12).
 int clock_gettime(int /*clk_id*/, struct timespec*t) {
     struct timeval now;
     int rv = gettimeofday(&now, NULL);
@@ -51,6 +52,9 @@ int clock_gettime(int /*clk_id*/, struct timespec*t) {
     return 0;
 }
 #endif
+
+// If true then flash one time and exit instead of listening for X's bell
+bool flash_once = false;
 
 // Visual bell
 struct {
@@ -126,6 +130,7 @@ void parse_args(int argc, char *argv[]) {
         {"color", required_argument, NULL, 'c'},
         {"colour", required_argument, NULL, 'c'},
         {"duration", required_argument, NULL, 'd'},
+        {"flash", no_argument, NULL, 'f'},
         {0, 0, 0, 0} // Last element must have all 0s for getopt_long
     };
     long tmp; // buffer for parsing arguments for options
@@ -135,24 +140,6 @@ void parse_args(int argc, char *argv[]) {
             case 0: // --help
                 print_usage(argv);
                 exit(0);
-
-            case 'd': // --duration
-                if (parse_ulong(optarg, &bell.duration)) {
-                    printf("Invalid duration %s. Should be a non-negative number of milliseconds.\n", optarg);
-                    exit(1);
-                }
-                break;
-
-            case 'c': // --color, --colour
-                errno = 0;
-                bell.color = strdup(optarg);
-                if (bell.color == NULL) {
-                    printf("Error setting color to %s", optarg);
-                    if (errno == 0) printf("\n");
-                    else printf(" (%d). Make sure you are using a valid X11 color name\n", errno);
-                    exit(1);
-                }
-                break;
 
             case 'w': // --width
                 if (parse_long(optarg, &tmp)) {
@@ -204,6 +191,28 @@ void parse_args(int argc, char *argv[]) {
                 bell.y = (int) tmp;
                 break;
 
+            case 'c': // --color, --colour
+                errno = 0;
+                bell.color = strdup(optarg);
+                if (bell.color == NULL) {
+                    printf("Error setting color to %s", optarg);
+                    if (errno == 0) printf("\n");
+                    else printf(" (%d). Make sure you are using a valid X11 color name\n", errno);
+                    exit(1);
+                }
+                break;
+
+            case 'd': // --duration
+                if (parse_ulong(optarg, &bell.duration)) {
+                    printf("Invalid duration %s. Should be a non-negative number of milliseconds.\n", optarg);
+                    exit(1);
+                }
+                break;
+
+            case 'f': // --flash
+                flash_once = true;
+                break;
+
             default:
                 // Print error message if getopt didn't already
                 if (option != '?') {
@@ -216,11 +225,12 @@ void parse_args(int argc, char *argv[]) {
 }
 
 static inline void update_timeout_and_hide(struct timespec *now, struct timespec *end_time, struct timespec *timeout,
-                                           Display **display, int *window) {
+                                           Display **display, int *window, bool *visible) {
     clock_gettime(CLOCK_MONOTONIC, now);
     *timeout = timespec_diff(now, end_time);
     if (timeout->tv_sec == 0 && timeout->tv_nsec == 0) {
         XUnmapWindow(*display, *window);
+        *visible = false;
     }
 }
 
@@ -232,7 +242,6 @@ int main(int argc, char *argv[]) {
         printf("Error opening display\n");
         return 1;
     }
-
 
     int screen = XDefaultScreen(display);
     Window root = XRootWindow(display, screen);
@@ -302,6 +311,32 @@ int main(int argc, char *argv[]) {
                                CWBackPixel | CWOverrideRedirect | CWSaveUnder,
                                &attrs);
 
+    if (flash_once) {
+        struct timespec now, timeout;
+
+        clock_gettime(CLOCK_MONOTONIC, &end_time);
+        end_time.tv_sec += duration.tv_sec;
+        end_time.tv_nsec += duration.tv_nsec;
+
+        // Create and display the window
+        XMapRaised(display, window);
+        XFlush(display);
+        bool visible = true;
+
+        // Wait for duration then destroy the window and return
+        // This should only have 2 iterations max in normal circumstances
+        while (visible) {
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            timeout = timespec_diff(&now, &end_time);
+            if (timeout.tv_sec == 0 && timeout.tv_nsec == 0) {
+                XUnmapWindow(display, window);
+                return 0;
+            }
+            nanosleep(&timeout, NULL);
+        }
+        return 0;
+    }
+
     for (;;) {
         struct timespec now, timeout = {0, 0};
 
@@ -309,7 +344,7 @@ int main(int argc, char *argv[]) {
         FD_ZERO(&in_fds);
         FD_SET(x11_fd, &in_fds);
 
-        if (visible) update_timeout_and_hide(&now, &end_time, &timeout, &display, &window);
+        if (visible) update_timeout_and_hide(&now, &end_time, &timeout, &display, &window, &visible);
 
 x11select:
         if (pselect(x11_fd + 1, &in_fds, NULL, NULL, &timeout, NULL) < 0) {
@@ -318,7 +353,7 @@ x11select:
             return 1;
         }
 
-        if (visible) update_timeout_and_hide(&now, &end_time, &timeout, &display, &window);
+        if (visible) update_timeout_and_hide(&now, &end_time, &timeout, &display, &window, &visible);
 
         while (XPending(display)) {
             XEvent ev;
