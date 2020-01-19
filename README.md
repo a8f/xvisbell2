@@ -15,9 +15,6 @@ Usage
 `--help` prints the above usage information and exits.
 
 
-**Note:** if a float is given for `x`, `y`, `w`, or `h`, the nearest integer value is used.
-
-
 `-x` and `-y` set the x and y position of the top left of the flashed window (default 0).
 You can equivalently use `--x` or `--y`.
 
@@ -32,6 +29,8 @@ You can equivalently use `--colour` or `--color`.
 To find a list of supported colour names for a given machine, see `<X11root>/lib/X11/rgb.txt` (`<X11root>` is usually `/usr/` or `/etc/`).
 There is also a visualization of commonly supported colour names available on [Wikipedia](https://en.wikipedia.org/wiki/X11_color_names).
 
+
 `-d` sets the duration of the flash in milliseconds. You can equivalently use `--duration`.
+
 
 `-f` flashes once and then exits. You can equivalently use `--flash`.
