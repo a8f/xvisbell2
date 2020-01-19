@@ -234,6 +234,34 @@ static inline void update_timeout_and_hide(struct timespec *now, struct timespec
     }
 }
 
+// Flash the screen once then exit(0)
+// Never returns
+void flash_once_and_exit(Display *display, Window window, struct timespec *duration) {
+    struct timespec now, timeout, end_time;
+
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    end_time.tv_sec += duration->tv_sec;
+    end_time.tv_nsec += duration->tv_nsec;
+
+    // Create and display the window
+    XMapRaised(display, window);
+    XFlush(display);
+    bool visible = true;
+
+    // Wait for duration then destroy the window and return
+    // This should only have 2 iterations max in normal circumstances
+    while (visible) {
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        timeout = timespec_diff(&now, &end_time);
+        if (timeout.tv_sec == 0 && timeout.tv_nsec == 0) {
+            XUnmapWindow(display, window);
+            exit(0);
+        }
+        nanosleep(&timeout, NULL);
+    }
+    exit(0);
+}
+
 int main(int argc, char *argv[]) {
     parse_args(argc, argv);
 
@@ -311,31 +339,7 @@ int main(int argc, char *argv[]) {
                                CWBackPixel | CWOverrideRedirect | CWSaveUnder,
                                &attrs);
 
-    if (flash_once) {
-        struct timespec now, timeout;
-
-        clock_gettime(CLOCK_MONOTONIC, &end_time);
-        end_time.tv_sec += duration.tv_sec;
-        end_time.tv_nsec += duration.tv_nsec;
-
-        // Create and display the window
-        XMapRaised(display, window);
-        XFlush(display);
-        bool visible = true;
-
-        // Wait for duration then destroy the window and return
-        // This should only have 2 iterations max in normal circumstances
-        while (visible) {
-            clock_gettime(CLOCK_MONOTONIC, &now);
-            timeout = timespec_diff(&now, &end_time);
-            if (timeout.tv_sec == 0 && timeout.tv_nsec == 0) {
-                XUnmapWindow(display, window);
-                return 0;
-            }
-            nanosleep(&timeout, NULL);
-        }
-        return 0;
-    }
+    if (flash_once) flash_once_and_exit(display, window, &duration);
 
     for (;;) {
         struct timespec now, timeout = {0, 0};

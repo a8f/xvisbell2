@@ -9,7 +9,7 @@ The typical way to use this program is to run it in the background when X starts
 
 Usage
 -----
-`xvisbell [-h <height>] [-w <width] [-x <x position>] [-y <y position>] [-c <colour name>]`
+`xvisbell [-h <height>] [-w <width] [-x <x position>] [-y <y position>] [-c <colour name>] [-d <ms duration>] [-f]`
 
 
 `--help` prints the above usage information and exits.
@@ -32,3 +32,6 @@ You can equivalently use `--colour` or `--color`.
 To find a list of supported colour names for a given machine, see `<X11root>/lib/X11/rgb.txt` (`<X11root>` is usually `/usr/` or `/etc/`).
 There is also a visualization of commonly supported colour names available on [Wikipedia](https://en.wikipedia.org/wiki/X11_color_names).
 
+`-d` sets the duration of the flash in milliseconds. You can equivalently use `--duration`.
+
+`-f` flashes once and then exits. You can equivalently use `--flash`.
